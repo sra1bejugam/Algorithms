@@ -1,0 +1,86 @@
+version: "3"
+
+services:
+  app:
+    build:
+      context: .
+      target: builder
+    command: run start
+    network_mode: bridge
+    environment:
+      - MESSAGE_STORE_HOST=eventide
+      - MESSAGE_STORE_USER=message_store
+      - MESSAGE_STORE_PASSWORD=
+      - NODE_ENV=development
+      - MESSAGE_STORE_PORT=5432
+    env_file: ./.env
+    image: ${DOCKER_REG}${SERVICE_NAME}
+    entrypoint: ./wait-for-it.sh ultron:8080 -s -t 65 mysql:3306 -s -t 65 -- npm
+    container_name: ${SERVICE_NAME}
+    links:
+      - ultron
+      - eventide
+      - mysql
+    depends_on:
+      - ultron
+      - mysql
+      - eventide
+    ports:
+      - ${PORT}:${PORT}
+      - 5858:5858
+    volumes:
+      - ./:/code
+      - /code/node_modules
+
+  ultron:
+    network_mode: bridge
+    image: 144803385057.dkr.ecr.us-east-1.amazonaws.com/polaris/ultron-server
+    ports:
+      - 8080:8080
+    expose:
+      - 8080
+    depends_on:
+      - eventide
+      - mysql
+    links:
+      - eventide
+      - mysql
+    entrypoint: ./wait-for-it.sh mysql:3306 -s -t 45 -- node script/start.js
+    environment:
+      DISABLE_MESSAGE_STORE_SSL: "true"
+      NODE_ENV: production
+      PORT: 8080
+      LOG_LEVEL: trace
+      PASS_THRU: "true"
+      MESSAGE_STORE_CONNECTION_STRING_COMMON: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_SERVICING: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_FINANCIAL_PROCESSING: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_WHITE_LABEL: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_REDIQ: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_BERKADIA_LENDING: postgres://message_store@eventide:5432/message_store
+      MYSQL_NAME: financialprocessing
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: password
+      MYSQL_PORT: 3306
+      MYSQL_USER: financialprocessing_user
+      IDENTITY_STORE_TTL: 1000
+      POLICY_STORE_TTL: 1000
+      RUN_MIGRATIONS: "true"
+      POLICY_BOOTSTRAP: '{ "identityId": "0f7387a0-898c-4f15-aabd-2f79bb2ebd6f", "identitySecret": "0277d910-c9c6-426f-83c6-48dbe08f0f6d", "readPolicies": [ { "category": "cashFlow:command"}, { "category": "cashFlow"} ], "writePolicies": [ { "category": "cashFlow" } ] }'
+  
+  eventide:
+    image: 144803385057.dkr.ecr.us-east-1.amazonaws.com/polaris/eventidedevenv-nodejs-polarisplatform
+    network_mode: bridge
+    ports:
+      - 5432:5432
+    expose:
+      - 5432
+  
+  mysql:
+    image: mysql:5.7
+    network_mode: bridge
+    env_file: ./.env
+    ports:
+      - 3306:3306
+    expose:
+      - 3306

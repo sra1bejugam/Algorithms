@@ -1,0 +1,168 @@
+trigger:
+  - master
+
+pool: Polaris Azure Ubuntu
+
+parameters:
+  - name: dockerRegistry
+    displayName: Docker Registry
+    default: 144803385057.dkr.ecr.us-east-1.amazonaws.com
+    type: string
+  - name: dockerRepository
+    displayName: Docker Repository
+    default: polaris/fp-cashflow-service
+    type: string
+  - name: awsServiceConnection
+    displayName: AWS Service Connection
+    default: "EKS Platform QC"
+    type: string
+  - name: awsServiceConnectionProd
+    displayName: AWS Service Connection Prod
+    default: "EKS Platform Prod"
+    type: string
+  - name: TeamProject
+    displayName: Project Team in Azure Boards
+    default: "Polaris Platform"
+    type: string
+  - name: AreaPath
+    default: "Polaris Platform"
+    displayName: Area Path in Azure Boards
+    type: string
+  - name: IterationPath
+    default: "Polaris Platform"
+    displayName: Iteration Path in Azure Boards
+    type: string
+variables:
+  - group: kv-polaris-platform-prod
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: Polaris/azp-templates
+    - repository: taskgroups
+      type: git
+      name: Skunkworks/taskgroups
+stages:
+- stage: Build
+  displayName: "Build and run automated tests"
+  jobs:
+  - job: RunTests
+    steps:
+    - template: auth/ecr-login.yaml@templates
+      parameters:
+        awsServiceConnection: ${{ parameters.awsServiceConnection }}
+    - bash: |
+        make build-agent
+    - template: tests/checkCodeCoverage.yaml@templates
+    - template: tests/checkTestResults.yaml@templates
+    - template: scans/sonar-scanner.yaml@templates
+      parameters:
+              sonarUrl: https://sonar.commonberk8s.com
+              sonarKey: "$(SONAR_KEY)"
+- stage: CI
+  displayName: "CI"
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  dependsOn: Build
+  jobs:
+  - job: DockerBuildAndPush
+    steps:
+    - template: deploy/docker-build-push.yaml@templates
+      parameters:
+        dockerRegistry: ${{ parameters.dockerRegistry }}
+        dockerRepository: ${{ parameters.dockerRepository }}
+        awsServiceConnection: ${{ parameters.awsServiceConnection }}
+        imageTags: |
+          $(Build.BuildId)
+          $(Build.BuildNumber)
+          latest
+  - job: ExecuteSecurityScans
+    displayName: Execute Security Scans - StackRox, SAST, SCA
+    steps:  
+## SAST Scan through Checkmarx
+    - template: scans/checkmarx-staticanalysis-scan.yaml@templates
+      parameters:
+        TeamProject: "${{ parameters.TeamProject }}"
+        AreaPath: "${{ parameters.AreaPath }}"
+        IterationPath: "${{ parameters.IterationPath }}"
+        CheckmarxService: 'SAST Berkadia Checkmarx'
+        customPreset: 'Berkadia_Polaris_Javascript_Preset'      # optional
+        highvulnthreshold: '0'                                  # optional
+        mediumvulnthreshold: '0'                                # optional
+        lowvulnthreshold: '10'                                  # optional
+        folderExclusion: 'cvs, .svn, .hg , .git, .bzr, bin , obj,  backup, .idea, node_modules, add-berkadia-certificates-to-repo, testData, uploads'   # optional
+        fileExtension: '!**/*.DS_Store, !**/*.ipr, !**/*.iws, !**/*.bak, !**/*.tmp, !**/*.aac, !**/*.aif, !**/*.iff, !**/*.m3u, !**/*.mid, !**/*.mp3,!**/*.mpa, !**/*.ra, !**/*.wav, !**/*.wma, !**/*.3g2, !**/*.3gp, !**/*.asf, !**/*.asx, !**/*.avi,!**/*.flv, !**/*.mov, !**/*.mp4, !**/*.mpg,  !**/*.rm, !**/*.swf, !**/*.vob, !**/*.wmv, !**/*.bmp, !**/*.gif, !**/*.jpg, !**/*.png, !**/*.psd, !**/*.tif, !**/*.swf, !**/*.jar, !**/*.zip, !**/*.rar, !**/*.exe, !**/*.dll, !**/*.pdb, !**/*.7z, !**/*.gz, !**/*.tar.gz, !**/*.tar, !**/*.gz, !**/*.ahtm, !**/*.ahtml, !**/*.fhtml, !**/*.hdm, !**/*.hdml,   !**/*.hsql, !**/*.ht, !**/*.hta, !**/*.htc, !**/*.htd, !**/*.war, !**/*.ear, !**/*.htmls, !**/*.ihtml, !**/*.mht, !**/*.mhtm, !**/*.mhtml, !**/*.ssi, !**/*.stm, !**/*.stml, !**/*.ttml, !**/*.txn, !**/*.xhtm, !**/*.xhtml, !**/*.class, !**/*.iml, !**/*.test.js, !**/*.spec.ts, !**/*.txt, !**/*.yaml, !**/*.css, !**/*.ini, !**/*.svg, !**/*.png, !**/*.gif, !**/*.map, !**/*.pdf'     #optional
+## SCA Scan through WhiteSource
+    - template: scans/whitesource-softwarecomposition-scan.yaml@templates
+      parameters:
+        TeamProject: "${{ parameters.TeamProject }}"
+        AreaPath: "${{ parameters.AreaPath }}"
+        IterationPath: "${{ parameters.IterationPath }}"
+        WSProjectToken: "$(ws-fp-cashflow-service-token)"
+- stage: QC
+  displayName: "CD: release to EKS QC"
+  dependsOn: CI
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  jobs:
+  - deployment: DeployQC
+    displayName: Deploy to QC
+    environment: fp-cashflow-service-qc
+    variables:
+    - group: kv-polaris-platform-qc
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+            - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+              displayName: 'Prepare secrets for structure'
+              inputs:
+                rootDirectory: '$(System.DefaultWorkingDirectory)/k8s/polaris-2/qc'
+                targetFiles: '**/*.yaml'
+                emptyValue: YTD
+            - template: deploy/kustomize-apply.yaml@templates
+              parameters:
+                awsServiceConnection: ${{ parameters.awsServiceConnection }}
+                eksClusterName: QC-eks-polaris
+                namespace: platform
+                kustomize: |
+                  resources:
+                    - k8s/polaris-2/qc/0.fpCashflow-svc.yaml
+                    - k8s/polaris-2/qc/1.fpCashflow-de.yaml
+                    - k8s/polaris-2/qc/2.fpCashflow-secret.yaml
+                  images:
+                    - name: ${{ parameters.dockerRegistry }}/${{ parameters.dockerRepository }}
+                      newTag: '$(Build.BuildNumber)'
+- stage: Prod
+  displayName: "CD: release to EKS Prod"
+  dependsOn: QC
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  jobs:
+  - deployment: DeployProd
+    displayName: Deploy to Production
+    environment: fp-cashflow-service-prod
+    variables:
+    - group: kv-polaris-platform-prod
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+            - task: qetza.replacetokens.replacetokens-task.replacetokens@3
+              displayName: 'Prepare secrets for structure'
+              inputs:
+                rootDirectory: '$(System.DefaultWorkingDirectory)/k8s/polaris-2/prod'
+                targetFiles: '**/*.yaml'
+            - template: deploy/kustomize-apply.yaml@templates
+              parameters:
+                awsServiceConnection: ${{ parameters.awsServiceConnectionProd }}
+                eksClusterName: Prod-eks-polaris
+                namespace: platform
+                kustomize: |
+                  resources:
+                    - k8s/polaris-2/prod/0.fpCashflow-svc.yaml
+                    - k8s/polaris-2/prod/1.fpCashflow-de.yaml
+                    - k8s/polaris-2/prod/2.fpCashflow-secret.yaml
+                  images:
+                    - name: ${{ parameters.dockerRegistry }}/${{ parameters.dockerRepository }}
+                      newTag: '$(Build.BuildNumber)'
