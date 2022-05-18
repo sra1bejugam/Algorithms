@@ -1,0 +1,361 @@
+# Docker compose file to run all the services.
+# This file will run all services in their nodemmon so any changes in any of the directories will re-run the service.
+
+# Happy coding!
+
+version: "3.7"
+
+networks:
+  fp:
+    driver: bridge
+
+services:
+  app:
+    build:
+      context: ./FpCommonServices-react-polarisApp
+      target: base
+    tty: true
+    entrypoint: npm
+    command: run start
+    env_file: .env
+    environment:
+      - PORT=${REACT_APP_PORT}
+      - CHOKIDAR_USEPOLLING=true # real time compiling the react app.
+    ports:
+      - 3000:${REACT_APP_PORT}
+    volumes:
+      - ./FpCommonServices-react-polarisApp:/code
+      - /code/node_modules
+    depends_on:
+      - application
+    networks: 
+      - fp
+
+  application:
+    build:
+      context: ./fp-submission-Application
+      target: base
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-submission-Application/.env
+    environment:
+      - PORT=${APPLICATION_PORT}
+    ports:
+      - 3001:${APPLICATION_PORT}
+    volumes:
+      - ./fp-submission-Application:/code
+      - /code/node_modules
+      - s3submission:/code/submission
+    depends_on:
+      - ultron
+      - eventide
+      - mysql
+    links:
+      - ultron
+      - eventide
+      - mysql
+    networks: 
+      - fp
+
+  normalization:
+    build:
+      context: ./fp-normalization-service
+      target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-normalization-service/.env
+    environment:
+      - PORT=${NORMALIZATION_PORT}
+    ports:
+      - 3003:${NORMALIZATION_PORT}
+    volumes:
+      - ./fp-normalization-service:/code
+      - /code/node_modules
+      - s3submission:/code/normalization
+    depends_on:
+      - ultron
+      - eventide
+      - redis
+    links:
+      - ultron
+      - eventide
+      - redis
+    networks: 
+      - fp
+
+  classification:    
+    build:
+      context: ./fp-classification-service
+      target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-classification-service/.env
+    environment:
+      - PORT=${CLASSIFICATION_PORT}
+    ports:
+      - 3004:${CLASSIFICATION_PORT}
+    volumes:
+      - ./fp-classification-service:/code
+      - /code/node_modules
+      - s3submission:/code/classification
+    depends_on:
+      - ultron
+      - eventide
+    links:
+      - ultron
+      - eventide
+    networks: 
+      - fp
+
+  leasecontract:
+    build:
+      context: ./fp-lease-contract-service
+      target: base
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-lease-contract-service/.env
+    environment:
+      - PORT=${LEASECONTRACT_PORT}
+    ports:
+      - 3005:${LEASECONTRACT_PORT}
+    volumes:
+      - ./fp-lease-contract-service:/code
+      - /code/node_modules
+      - s3submission:/code/leaseContract
+    depends_on:
+      - ultron
+      - eventide
+      - mysql
+    links:
+      - ultron
+      - eventide
+      - mysql
+    networks: 
+      - fp
+
+  cashflow:
+    build:
+      context: ./fp-cashflow-service
+      target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-cashflow-service/.env
+    environment:
+      - PORT=${CASHFLOW_PORT}
+    ports:
+      - 3006:${CASHFLOW_PORT}
+    volumes:
+      - ./fp-cashflow-service:/code
+      - /code/node_modules
+      - s3submission:/code/cashFlow
+    depends_on:
+      - ultron
+      - eventide
+      - mysql
+    links:
+      - ultron
+      - eventide
+      - mysql
+    networks: 
+      - fp
+  
+  regression:
+    build:
+      context: ./fp-regression-suite-service
+      target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-regression-suite-service/.env
+    environment:
+      - PORT=${REGRESSION_PORT}
+    ports:
+      - 3009:${REGRESSION_PORT}
+    volumes:
+      - ./fp-regression-suite-service:/code
+      - /code/node_modules
+    depends_on:
+      - mysql
+      - application
+      - aggregator
+    links:
+      - mysql
+      - application
+      - aggregator
+    networks: 
+      - fp
+  
+  mcoa:
+    build:
+      context: ./fp-mcoa-service
+      target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-mcoa-service/.env
+    environment:
+      - PORT=${MCOA_PORT}
+    ports:
+      - 3010:${MCOA_PORT}
+    volumes:
+      - ./fp-mcoa-service:/code
+      - /code/node_modules
+    depends_on:
+      - ultron
+      - eventide
+      - mysql
+    links:
+      - ultron
+      - eventide
+      - mysql
+    networks: 
+      - fp
+  
+  templatetuning:
+    build:
+      context: ./fp-template-tuning-service
+      target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-template-tuning-service/.env
+    environment:
+      - PORT=${TEMPLATE_TUNING_PORT}
+    ports:
+      - 3008:${TEMPLATE_TUNING_PORT}
+    volumes:
+      - ./fp-template-tuning-service:/code
+      - /code/node_modules
+      - s3submission:/code/tuneTemplate
+    depends_on:
+      - ultron
+      - eventide
+    links:
+      - ultron
+      - eventide
+    networks: 
+      - fp
+
+  eventide:
+    image: 144803385057.dkr.ecr.us-east-1.amazonaws.com/polaris/eventidedevenv-nodejs-polarisplatform
+    ports:
+      - 5432:5432
+    networks: 
+      - fp
+  mysql:
+    image: mysql:5.7
+    env_file: .env
+    ports:
+      - 3306:3306
+    networks: 
+      - fp
+
+  redis:
+    env_file: .env
+    expose:
+      - 6379
+    image: redis
+    ports:
+      - 6379:6379
+    networks: 
+      - fp
+
+  aggregator:
+    build:
+      context: ./fp-submission-aggregator
+      target: base
+    tty: true
+    entrypoint: npm
+    command: run start
+    env_file: ./fp-submission-aggregator/.env
+    environment:
+      - PORT=${AGGREGATOR_PORT}
+    ports:
+      - 3002:${AGGREGATOR_PORT}
+    volumes:
+      - ./fp-submission-aggregator:/code
+      - /code/node_modules
+    depends_on:
+      - eventide
+      - mysql
+      # - normalization
+      - ultron
+    links:
+      - ultron
+      - eventide
+      - mysql
+    networks: 
+      - fp
+
+  subscription:
+    build:
+        context: ./fp-subscription-service
+        target: builder
+    tty: true
+    entrypoint: npm
+    command: run dev
+    env_file: ./fp-subscription-service/.env
+    environment:
+      - PORT=${SUBSCRIPTION_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3007:${SUBSCRIPTION_PORT}
+    volumes:
+      - ./fp-subscription-service:/code
+      - /code/node_modules
+      - s3submission:/code/subscription
+    depends_on:
+      - ultron
+    links:
+      - ultron
+    networks: 
+      - fp
+  ultron:
+    image: 144803385057.dkr.ecr.us-east-1.amazonaws.com/polaris/ultron-server
+    ports:
+      - 8080:8080
+    expose:
+      - 8080
+    depends_on:
+      - eventide
+      - mysql
+    links:
+      - eventide
+      - mysql
+    networks: 
+      - fp
+    entrypoint: ./wait-for-it.sh mysql:3306 -s -t 45 -- node script/start.js
+    environment:
+      DISABLE_MESSAGE_STORE_SSL: 'true'
+      NODE_ENV: production
+      PORT: 8080
+      LOG_LEVEL: trace
+      PASS_THRU: 'true'
+      MESSAGE_STORE_CONNECTION_STRING_COMMON: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_SERVICING: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_FINANCIAL_PROCESSING: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_WHITE_LABEL: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_REDIQ: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_BERKADIA_LENDING: postgres://message_store@eventide:5432/message_store
+      # Added week of 19 October 2020
+      MYSQL_NAME: financialprocessing
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: password
+      MYSQL_PORT: 3306
+      MYSQL_USER: financialprocessing_user
+      IDENTITY_STORE_TTL: 1000
+      # Added 29 October 2020
+      POLICY_STORE_TTL: 1000
+      RUN_MIGRATIONS: 'true'
+      POLICY_BOOTSTRAP: '{ "identityId": "f2b5c177-fcf9-46ab-9180-9a24df2a90d2", "identitySecret": "447456bd-7a8e-40cb-a1c8-c0fffaba355d", "readPolicies": [ { "category": "cashFlow"}, {"category": "cashFlow:command"}, {"category": "normalization"} ], "writePolicies": [ { "category": "normalization:command" }, { "category": "classification" }, { "category": "classification:command" }, { "category": "cashFlow"} ] }'
+
+
+volumes:
+  s3submission:

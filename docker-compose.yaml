@@ -1,0 +1,291 @@
+version: "3.7"
+
+services:
+  app:
+    network_mode: bridge
+    build:
+      context: ./FpCommonServices-react-polarisApp
+      target: base
+    tty: true
+    env_file: .env
+    environment:
+      - PORT=${REACT_APP_PORT}
+    ports:
+      - 3000:${REACT_APP_PORT}
+    volumes:
+      - ./FpCommonServices-react-polarisApp:/code
+      - /code/node_modules
+    depends_on:
+      - application
+
+  application:
+    network_mode: bridge
+    build:
+      context: ./fp-submission-Application
+      target: base
+    tty: true
+    env_file: ./fp-submission-Application/.env
+    environment:
+      - PORT=${APPLICATION_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3001:${APPLICATION_PORT}
+    volumes:
+      - ./fp-submission-Application:/code
+      - /code/node_modules
+      - s3submission:/code/submission
+    depends_on:
+      - ultron
+      - mysql
+    links:
+      - ultron
+      - mysql
+
+  aggregator:
+    network_mode: bridge
+    build:
+      context: ./fp-submission-aggregator
+      target: base
+    tty: true
+    env_file: ./fp-submission-aggregator/.env
+    environment:
+      - PORT=${AGGREGATOR_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3002:${AGGREGATOR_PORT}
+    volumes:
+      - ./fp-submission-aggregator:/code
+      - /code/node_modules
+    depends_on:
+      - mysql
+      - ultron
+    links:
+      - mysql
+      - ultron
+
+  normalization:
+    network_mode: bridge
+    build:
+      context: ./fp-normalization-service
+      target: base
+    tty: true
+    env_file: ./fp-normalization-service/.env
+    environment:
+      - PORT=${NORMALIZATION_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3003:${NORMALIZATION_PORT}
+    volumes:
+      - ./fp-normalization-service:/code
+      - /code/node_modules
+      - s3submission:/code/normalization
+    depends_on:
+      - ultron
+      - redis
+    links:
+      - ultron
+      - redis
+
+  classification:
+    network_mode: bridge
+    build:
+      context: ./fp-classification-service
+      target: base
+    tty: true
+    env_file: ./fp-classification-service/.env
+    environment:
+      - PORT=${CLASSIFICATION_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3004:${CLASSIFICATION_PORT}
+    volumes:
+      - ./fp-classification-service:/code
+      - /code/node_modules
+      - s3submission:/code/classification
+    depends_on:
+      - ultron
+    links:
+      - ultron
+
+  leasecontract:
+    network_mode: bridge
+    build:
+      context: ./fp-lease-contract-service
+      target: base
+    tty: true
+    env_file: ./fp-lease-contract-service/.env
+    environment:
+      - PORT=${LEASECONTRACT_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3005:${LEASECONTRACT_PORT}
+    volumes:
+      - ./fp-lease-contract-service:/code
+      - /code/node_modules
+      - s3submission:/code/leaseContract
+    depends_on:
+      - ultron
+    links:
+      - ultron
+
+  cashflow:
+    network_mode: bridge
+    build:
+      context: ./fp-cashflow-service
+      target: base
+    tty: true
+    env_file: ./fp-cashflow-service/.env
+    environment:
+      - PORT=${CASHFLOW_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3006:${CASHFLOW_PORT}
+    volumes:
+      - ./fp-cashflow-service:/code
+      - /code/node_modules
+    depends_on:
+      - ultron
+    links:
+      - ultron
+  
+  mcoa:
+    network_mode: bridge
+    build:
+      context: ./fp-mcoa-service
+      target: base
+    tty: true
+    env_file: ./fp-mcoa-service/.env
+    environment:
+      - PORT=${MCOA_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3010:${MCOA_PORT}
+    volumes:
+      - ./fp-mcoa-service:/code
+      - /code/node_modules
+    depends_on:
+      - ultron
+    links:
+      - ultron
+
+  subscription:
+    network_mode: bridge
+    build:
+      context: ./fp-subscription-service
+      target: base
+    tty: true
+    env_file: ./fp-subscription-service/.env
+    environment:
+      - PORT=${SUBSCRIPTION_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3007:${SUBSCRIPTION_PORT}
+    volumes:
+      - ./fp-subscription-service:/code
+      - /code/node_modules
+      - s3submission:/code/subscription
+    depends_on:
+      - ultron
+    links:
+      - ultron
+
+  templatetuning:
+    network_mode: bridge
+    build:
+      context: ./fp-template-tuning-service
+      target: base
+    tty: true
+    env_file: ./fp-template-tuning-service/.env
+    environment:
+      - PORT=${TEMPLATE_TUNING_PORT}
+      - ULTRON_CONNECTION_STRING=${ULTRON_CONNECTION_STRING}
+      - ULTRON_IDENTITY_ID=${ULTRON_IDENTITY_ID}
+      - ULTRON_IDENTITY_SECRET=${ULTRON_IDENTITY_SECRET}
+    ports:
+      - 3008:${TEMPLATE_TUNING_PORT}
+    volumes:
+      - ./fp-template-tuning-service:/code
+      - /code/node_modules
+      - s3submission:/code/tuneTemplate
+    depends_on:
+      - ultron
+    links:
+      - ultron
+
+  eventide:
+    network_mode: bridge
+    image: 144803385057.dkr.ecr.us-east-1.amazonaws.com/polaris/eventidedevenv-nodejs-polarisplatform
+    ports:
+      - 5432:5432
+  mysql:
+    network_mode: bridge
+    image: mysql:5.7
+    env_file: .env
+    ports:
+      - 3306:3306
+  
+  redis:
+    env_file: .env
+    network_mode: bridge
+    expose:
+      - 6379
+    image: redis
+    ports:
+      - 6379:6379
+
+  ultron:
+    network_mode: bridge
+    image: 144803385057.dkr.ecr.us-east-1.amazonaws.com/polaris/ultron-server
+    ports:
+      - 8080:8080
+    expose:
+      - 8080
+    depends_on:
+      - eventide
+      - mysql
+    links:
+      - eventide
+      - mysql
+    entrypoint: ./wait-for-it.sh mysql:3306 -s -t 45 -- node script/start.js
+    environment:
+      DISABLE_MESSAGE_STORE_SSL: 'true'
+      NODE_ENV: production
+      PORT: 8080
+      LOG_LEVEL: trace
+      PASS_THRU: 'true'
+      MESSAGE_STORE_CONNECTION_STRING_COMMON: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_SERVICING: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_FINANCIAL_PROCESSING: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_WHITE_LABEL: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_REDIQ: postgres://message_store@eventide:5432/message_store
+      MESSAGE_STORE_CONNECTION_STRING_BERKADIA_LENDING: postgres://message_store@eventide:5432/message_store
+      # Added week of 19 October 2020
+      MYSQL_NAME: financialprocessing
+      MYSQL_HOST: mysql
+      MYSQL_PASSWORD: password
+      MYSQL_PORT: 3306
+      MYSQL_USER: financialprocessing_user
+      IDENTITY_STORE_TTL: 1000
+      # Added 29 October 2020
+      POLICY_STORE_TTL: 1000
+      RUN_MIGRATIONS: 'true'
+      POLICY_BOOTSTRAP: '{ "identityId": "84f1bb99-a1e4-4c6e-a517-170ba2cbf35c", "identitySecret": "30b0671d-35b5-4032-aac2-45dbb68221c7", "readPolicies": [{"category": "mcoa:command"},{"category": "mcoaMapping:command"},{"category": "digitization"},{"category": "mwfRentrollProcessingComponent:command"},{"category": "berkadiaLendingRentRoll:command"},{"category": "financialProcessingService"},{"category": "financialProcessingService:command"},{"category":"templateTuning"},{"category":"templateTuning:command"},{ "category": "cashFlow"},{ "category":"normalization"},{ "category":"classification"}, {"category":"leaseContract"}, { "category": "normalization:command"}, {"category":"leaseContract:command"}, { "category": "cashFlow:command"} ], "writePolicies": [ {"category": "mcoa:command"},{"category": "digitization:command"},{"category": "mcoaMapping:command"},{"category":"templateTuning"},{"category":"templateTuning:command"},{ "category": "cashFlow"},{ "category":"normalization"},{ "category":"classification"}, {"category":"leaseContract"}, { "category": "normalization:command"}, {"category":"leaseContract:command"}, { "category": "cashFlow:command"},{"category": "berkadiaLendingRentRoll:command"},{"category": "financialProcessingService"},{"category": "financialProcessingService:command"},{"category": "mwfRentrollProcessingComponent:command"}] }'
+
+volumes:
+  s3submission:
